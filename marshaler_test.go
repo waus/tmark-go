@@ -15,7 +15,9 @@ func TestMarshal(t *testing.T) {
 		{"list", NewList(NewListItem(P(T("x"))).WithChecked(false)), "{list;\n{#checked{f}{p;x}}\n}"},
 		{"table", NewTable(NewTableRow(NewCell(T("x")))), "{table;\n{{x}}\n}"},
 		{"collage", NewCollage(NewImage("a"), NewImage("b")), "{collage;\n{img;a}\n{img;b}\n}"},
-		{"slideshow", NewSlideshow(NewImage("a"), NewVideo("b")), "{slideshow;\n{img;a}\n{video;b}\n}"},
+		{"slideshow", NewSlideshow(NewImage("a"), NewVideo("b", "p")), "{slideshow;\n{img;a}\n{video;#preview{p}b}\n}"},
+		{"video", NewVideo("/video.mp4", "/preview.jpg"), "{video;#preview{/preview.jpg}/video.mp4}"},
+		{"video loop", NewVideo("/video.mp4", "/preview.jpg").WithLoop(), "{video;#loop{t}#preview{/preview.jpg}/video.mp4}"},
 		{"bool", NewImage("/file/x.jpg").WithSpoiler(), "{img;#has_spoiler{t}/file/x.jpg}"},
 		{"caption", NewImage("/file/x.jpg").WithCaption(NewCaption(T("x"))), "{img;#caption{x}/file/x.jpg}"},
 		{"caption credit", NewImage("x").WithCaption(NewCaption(T("song")).WithCredit(T("author"))), "{img;#caption{#credit{author}song}x}"},
@@ -54,6 +56,12 @@ func TestMarshalCaptionAsNode(t *testing.T) {
 func TestNewHeaderPreservesSizeForValidation(t *testing.T) {
 	if _, err := Marshal(NewHeader(7, T("x"))); err == nil {
 		t.Fatal("Marshal(NewHeader(7)) error = nil, want invalid size error")
+	}
+}
+
+func TestVideoRequiresPreview(t *testing.T) {
+	if _, err := Marshal(NewVideo("/video.mp4", "")); err == nil {
+		t.Fatal("Marshal(video without preview) error = nil, want required preview error")
 	}
 }
 

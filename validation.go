@@ -15,6 +15,10 @@ func validateNode(value any) error {
 		if node.Size < 1 || node.Size > 6 {
 			return fmt.Errorf("tmark: header size must be 1..6")
 		}
+	case Video:
+		if node.Preview == "" {
+			return fmt.Errorf("tmark: video preview is required")
+		}
 	case ListItem:
 		if node.Type != nil {
 			switch *node.Type {

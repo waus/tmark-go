@@ -316,10 +316,12 @@ type Video struct {
 	slideshow
 	Caption    *Caption `tmark:"named"`
 	HasSpoiler bool     `tmark:"named,has_spoiler"`
+	Loop       bool     `tmark:"named"`
+	Preview    Text     `tmark:"named"`
 	Src        Text     `tmark:"unnamed"`
 }
 
-func NewVideo(src Text) Video { return Video{Src: src} }
+func NewVideo(src, preview Text) Video { return Video{Src: src, Preview: preview} }
 
 func (v Video) WithCaption(caption Caption) Video {
 	v.Caption = &caption
@@ -327,6 +329,10 @@ func (v Video) WithCaption(caption Caption) Video {
 }
 func (v Video) WithSpoiler() Video {
 	v.HasSpoiler = true
+	return v
+}
+func (v Video) WithLoop() Video {
+	v.Loop = true
 	return v
 }
 

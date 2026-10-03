@@ -17,6 +17,28 @@ func TestToHTML(t *testing.T) {
 	}
 }
 
+func TestVideoHTMLPoster(t *testing.T) {
+	got, err := ToHTML(NewRichBlocks(NewVideo("/video.mp4", "/preview.jpg")))
+	if err != nil {
+		t.Fatalf("ToHTML() error = %v", err)
+	}
+	want := "<figure><video controls src=\"/video.mp4\" poster=\"/preview.jpg\"></video></figure>\n"
+	if string(got) != want {
+		t.Fatalf("ToHTML() = %q, want %q", got, want)
+	}
+}
+
+func TestVideoHTMLLoop(t *testing.T) {
+	got, err := ToHTML(NewRichBlocks(NewVideo("/video.mp4", "/preview.jpg").WithLoop()))
+	if err != nil {
+		t.Fatalf("ToHTML() error = %v", err)
+	}
+	want := "<figure><video controls src=\"/video.mp4\" poster=\"/preview.jpg\" loop></video></figure>\n"
+	if string(got) != want {
+		t.Fatalf("ToHTML() = %q, want %q", got, want)
+	}
+}
+
 func TestToMarkdown(t *testing.T) {
 	input := NewRichBlocks(
 		NewHeader(3, NewText("Title")),

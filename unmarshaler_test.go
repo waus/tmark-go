@@ -15,6 +15,8 @@ func TestUnmarshalRoundTrip(t *testing.T) {
 		NewLink("https://example.com", T("x")),
 		NewCaption(T("x")),
 		NewImage("/file/x.jpg").WithCaption(NewCaption(T("caption")).WithCredit(T("credit"))).WithSpoiler(),
+		NewVideo("/video.mp4", "/preview.jpg"),
+		NewVideo("/video.mp4", "/preview.jpg").WithLoop(),
 		NewDateTime(1, "UTC"),
 		NewMap(52.52, -0.125),
 		NewIcon("/file/x.png").WithAlternativeText("x"),
@@ -65,6 +67,7 @@ func TestUnmarshalRejectsInvalidSerialization(t *testing.T) {
 		"{p;bad\\q}",
 		"{p;x\ry}",
 		"{p;#BAD{x}}",
+		"{video;/video.mp4}",
 	}
 	for _, data := range cases {
 		t.Run(data, func(t *testing.T) {

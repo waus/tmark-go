@@ -110,11 +110,11 @@ func (r *htmlRenderer) block(node any) error {
 		r.out.WriteString("></figure>\n")
 		return r.caption(n.Caption)
 	case Image:
-		return r.mediaFigure("img", string(n.Src), n.Caption)
+		return r.mediaFigure("img", string(n.Src), "", false, n.Caption)
 	case Video:
-		return r.mediaFigure("video", string(n.Src), n.Caption)
+		return r.mediaFigure("video", string(n.Src), string(n.Preview), n.Loop, n.Caption)
 	case Audio:
-		return r.mediaFigure("audio", string(n.Src), n.Caption)
+		return r.mediaFigure("audio", string(n.Src), "", false, n.Caption)
 	case Collage:
 		return r.slides("collage", n.Children, n.Caption)
 	case Slideshow:
@@ -173,7 +173,7 @@ func (r *htmlRenderer) list(list List) error {
 	return nil
 }
 
-func (r *htmlRenderer) mediaFigure(tag, src string, caption *Caption) error {
+func (r *htmlRenderer) mediaFigure(tag, src, preview string, loop bool, caption *Caption) error {
 	r.out.WriteString("<figure>")
 	switch tag {
 	case "img":
@@ -185,7 +185,15 @@ func (r *htmlRenderer) mediaFigure(tag, src string, caption *Caption) error {
 		r.out.WriteString(tag)
 		r.out.WriteString(" controls src=\"")
 		r.out.WriteString(attr(src))
-		r.out.WriteString("\"></")
+		if tag == "video" {
+			r.out.WriteString("\" poster=\"")
+			r.out.WriteString(attr(preview))
+		}
+		r.out.WriteByte('"')
+		if loop {
+			r.out.WriteString(" loop")
+		}
+		r.out.WriteString("></")
 		r.out.WriteString(tag)
 		r.out.WriteByte('>')
 	}
@@ -203,11 +211,11 @@ func (r *htmlRenderer) slides(class string, children []slideshowContent, caption
 	for _, child := range children {
 		switch n := child.(type) {
 		case Image:
-			if err := r.mediaFigure("img", string(n.Src), n.Caption); err != nil {
+			if err := r.mediaFigure("img", string(n.Src), "", false, n.Caption); err != nil {
 				return err
 			}
 		case Video:
-			if err := r.mediaFigure("video", string(n.Src), n.Caption); err != nil {
+			if err := r.mediaFigure("video", string(n.Src), string(n.Preview), n.Loop, n.Caption); err != nil {
 				return err
 			}
 		default:
