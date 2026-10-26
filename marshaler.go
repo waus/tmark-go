@@ -379,11 +379,11 @@ func parseTmarkTag(sf reflect.StructField) (fieldTag, bool) {
 	}
 	parts := strings.Split(raw, ",")
 	ft := fieldTag{name: strings.ToLower(sf.Name)}
-	if parts[0] == "named" {
+	switch parts[0] {
+	case "named":
 		ft.named = true
-	} else if parts[0] == "unnamed" {
-		ft.named = false
-	} else {
+	case "unnamed":
+	default:
 		return fieldTag{}, false
 	}
 	for _, p := range parts[1:] {

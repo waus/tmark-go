@@ -412,7 +412,7 @@ func (r *markdownRenderer) richNode(node any) error {
 	return nil
 }
 
-func (r *markdownRenderer) wrap(open, close string, children RichText) error {
+func (r *markdownRenderer) wrap(opening, closing string, children RichText) error {
 	nested := markdownRenderer{htmlLess: r.htmlLess}
 	if err := nested.rich(children); err != nil {
 		return err
@@ -425,9 +425,9 @@ func (r *markdownRenderer) wrap(open, close string, children RichText) error {
 	}
 	start := strings.Index(value, text)
 	r.out.WriteString(value[:start])
-	r.out.WriteString(open)
+	r.out.WriteString(opening)
 	r.out.WriteString(text)
-	r.out.WriteString(close)
+	r.out.WriteString(closing)
 	r.out.WriteString(value[start+len(text):])
 	return nil
 }

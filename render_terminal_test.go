@@ -1,6 +1,7 @@
 package tmark
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,7 +95,7 @@ func TestTerminalRejectsInputControls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.ContainsAny(string(got), "\x1b\a\r\b\u009b") {
+	if bytes.ContainsAny(got, "\x1b\a\r\b\u009b") {
 		t.Fatalf("unsafe controls: %q", got)
 	}
 }

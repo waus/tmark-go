@@ -142,7 +142,7 @@ func (r *htmlRenderer) list(list List) error {
 		if item.Order != nil {
 			fmt.Fprintf(&r.out, " value=\"%d\"", *item.Order)
 		}
-		if item.Type != nil && strings.Contains("aAiI1", string(*item.Type)) && len(*item.Type) == 1 {
+		if item.Type != nil && len(*item.Type) == 1 && strings.ContainsAny(string(*item.Type), "aAiI1") {
 			fmt.Fprintf(&r.out, " type=\"%s\"", *item.Type)
 		}
 		r.out.WriteByte('>')

@@ -251,7 +251,7 @@ type List struct {
 func NewList(items ...ListItem) List { return List{Items: items} }
 
 type ListItem struct {
-	Type     *Text      `tmark:"named"` //For ordered lists, the type of the item label; must be one of “a” for lowercase letters, “A” for uppercase letters, “i” for lowercase Roman numerals, “I” for uppercase Roman numerals, or “1” for decimal numbers
+	Type     *Text      `tmark:"named"` // For ordered lists, the type of the item label; must be one of “a” for lowercase letters, “A” for uppercase letters, “i” for lowercase Roman numerals, “I” for uppercase Roman numerals, or “1” for decimal numbers
 	Order    *int       `tmark:"named"`
 	Checked  *bool      `tmark:"named"`
 	Children RichBlocks `tmark:"unnamed"`
