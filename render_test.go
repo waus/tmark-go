@@ -48,7 +48,7 @@ func TestToMarkdown(t *testing.T) {
 		NewParagraph(NewText("Hello "), NewBold(NewText("world")), NewText(" "), NewCode(NewText("x"))),
 		NewList(NewListItem(NewParagraph(NewText("one"))), NewListItem(NewParagraph(NewText("two")))),
 	)
-	output, err := ToMarkdown(input)
+	output, err := ToMarkdown(input, false)
 	if err != nil {
 		t.Fatalf("to markdown: %v", err)
 	}
@@ -58,28 +58,14 @@ func TestToMarkdown(t *testing.T) {
 	}
 }
 
-func TestMarkdownUnsupportedStrictAndSoft(t *testing.T) {
-	content := NewRichBlocks(NewMap(1, 2))
-	if _, err := ToMarkdown(content); err == nil {
-		t.Fatal("ToMarkdown map strict succeeded, want error")
-	}
-	if _, err := ToMarkdown(content, WithSoftConversion()); err != nil {
-		t.Fatalf("ToMarkdown map soft: %v", err)
-	}
-}
-
-func TestMarkdownTableCellUnsupportedStrictAndSoft(t *testing.T) {
-	content := NewRichBlocks(NewTable(NewTableRow(NewCell(Unknown{Raw: []byte("{x;v}")}))))
-	if _, err := ToMarkdown(content); err == nil {
-		t.Fatal("ToMarkdown table cell strict succeeded, want error")
-	}
-	got, err := ToMarkdown(content, WithSoftConversion())
+func TestMarkdownTableCellFallback(t *testing.T) {
+	got, err := ToMarkdown(NewRichBlocks(NewTable(NewTableRow(NewCell(Unknown{Raw: []byte("{x;v}")})))), false)
 	if err != nil {
-		t.Fatalf("ToMarkdown table cell soft: %v", err)
+		t.Fatal(err)
 	}
-	want := "|  |\n| --- |\n| \\[unsupported\\] |"
+	want := "|  |\n| --- |\n| `{x;v}` |"
 	if string(got) != want {
-		t.Fatalf("markdown mismatch\nwant: %q\n got: %q", want, got)
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }
 
@@ -188,14 +174,14 @@ func TestSpoilerMediaRendering(t *testing.T) {
 			if string(got) != tc.html {
 				t.Fatalf("ToHTML() = %q, want %q", got, tc.html)
 			}
-			got, err = ToMarkdown(tc.content)
+			got, err = ToMarkdown(tc.content, false)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if string(got) != strings.TrimSuffix(tc.html, "\n") {
 				t.Fatalf("ToMarkdown() did not preserve spoiler HTML: %q", got)
 			}
-			got, err = ToMarkdown(tc.content, WithHTMLLess())
+			got, err = ToMarkdown(tc.content, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -213,7 +199,7 @@ func TestSpoilersInGalleries(t *testing.T) {
 	)
 	for name, render := range map[string]func(RichBlocks) ([]byte, error){
 		"HTML":     ToHTML,
-		"Markdown": func(content RichBlocks) ([]byte, error) { return ToMarkdown(content) },
+		"Markdown": func(content RichBlocks) ([]byte, error) { return ToMarkdown(content, false) },
 	} {
 		got, err := render(content)
 		if err != nil {
@@ -222,5 +208,38 @@ func TestSpoilersInGalleries(t *testing.T) {
 		if strings.Count(string(got), `class="tmark-spoiler"`) != 2 {
 			t.Fatalf("%s lost gallery spoiler flags: %s", name, got)
 		}
+	}
+}
+
+func TestRenderFallback(t *testing.T) {
+	content := NewRichBlocks(
+		NewParagraph(Unknown{Raw: []byte("{future;inline}")}),
+		Unknown{Raw: []byte("{future;block}")},
+	)
+	for _, tc := range []struct {
+		name   string
+		render func(RichBlocks) ([]byte, error)
+		want   string
+	}{
+		{"HTML", ToHTML, "<p><code>{future;inline}</code></p>\n<pre><code>{future;block}</code></pre>\n"},
+		{"Markdown", func(c RichBlocks) ([]byte, error) { return ToMarkdown(c, false) }, "`{future;inline}`\n\n```\n{future;block}\n```"},
+		{"Markdown HTML-less", func(c RichBlocks) ([]byte, error) { return ToMarkdown(c, true) }, "`{future;inline}`\n\n```\n{future;block}\n```"},
+		{"terminal", func(c RichBlocks) ([]byte, error) { return ToTerminal(c, false, false) }, "`{future;inline}`\n\n┌─ code\n│ {future;block}\n└─"},
+		{"terminal plain", func(c RichBlocks) ([]byte, error) { return ToTerminal(c, true, false) }, "`{future;inline}`\n\n┌─ code\n│ {future;block}\n└─"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := tc.render(content)
+			if err != nil || string(got) != tc.want {
+				t.Fatalf("got %q, %v; want %q", got, err, tc.want)
+			}
+			for _, invalid := range []RichBlocks{
+				NewRichBlocks(Unknown{Raw: []byte("{future;")}),
+				NewRichBlocks(NewParagraph(Unknown{Raw: []byte("{future;")})),
+			} {
+				if _, err := tc.render(invalid); err == nil {
+					t.Fatal("accepted malformed fallback node")
+				}
+			}
+		})
 	}
 }

@@ -2,14 +2,14 @@ package tmark
 
 import (
 	"bytes"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
 )
 
-func ToMarkdown(content RichBlocks, options ...RenderOption) ([]byte, error) {
-	renderer := markdownRenderer{cfg: newRenderConfig(options)}
+// ToMarkdown renders GFM; htmlLess disables raw HTML tags and comments.
+func ToMarkdown(content RichBlocks, htmlLess bool) ([]byte, error) {
+	renderer := markdownRenderer{htmlLess: htmlLess}
 	if err := renderer.blocks(content); err != nil {
 		return nil, err
 	}
@@ -17,8 +17,8 @@ func ToMarkdown(content RichBlocks, options ...RenderOption) ([]byte, error) {
 }
 
 type markdownRenderer struct {
-	cfg renderConfig
-	out bytes.Buffer
+	htmlLess bool
+	out      bytes.Buffer
 }
 
 func (r *markdownRenderer) blocks(blocks RichBlocks) error {
@@ -27,7 +27,7 @@ func (r *markdownRenderer) blocks(blocks RichBlocks) error {
 			r.out.WriteString("\n")
 			if _, current := block.(List); current {
 				if _, previous := blocks[i-1].(List); previous {
-					if r.cfg.htmlLess {
+					if r.htmlLess {
 						r.out.WriteString("---\n\n")
 					} else {
 						r.out.WriteString("<!-- -->\n\n")
@@ -64,7 +64,7 @@ func (r *markdownRenderer) block(node any) error {
 		}
 		r.out.WriteString("\n")
 	case Blockquote:
-		nested := markdownRenderer{cfg: r.cfg}
+		nested := markdownRenderer{htmlLess: r.htmlLess}
 		if err := nested.blocks(n.Blocks); err != nil {
 			return err
 		}
@@ -105,16 +105,14 @@ func (r *markdownRenderer) block(node any) error {
 	case MathBlock:
 		return r.block(NewPreformatted(n.Expression))
 	case Anchor:
-		if r.cfg.htmlLess {
+		if r.htmlLess {
 			return nil
 		}
 		r.out.WriteString("<a id=\"")
 		r.out.WriteString(escapeHTMLAttr(string(n.Name)))
 		r.out.WriteString("\"></a>\n")
-	case Map:
-		return r.unsupported("map", "markdown has no map block")
 	case Image:
-		if n.HasSpoiler && !r.cfg.htmlLess {
+		if n.HasSpoiler && !r.htmlLess {
 			return r.htmlBlock(n)
 		}
 		r.out.WriteString("![](")
@@ -122,7 +120,7 @@ func (r *markdownRenderer) block(node any) error {
 		r.out.WriteString(")\n")
 		return r.caption(n.Caption)
 	case Video:
-		if n.HasSpoiler && !r.cfg.htmlLess {
+		if n.HasSpoiler && !r.htmlLess {
 			return r.htmlBlock(n)
 		}
 		r.out.WriteString("[video](")
@@ -141,7 +139,7 @@ func (r *markdownRenderer) block(node any) error {
 	case Table:
 		return r.table(n)
 	case Details:
-		if r.cfg.htmlLess {
+		if r.htmlLess {
 			if len(n.Summary) > 0 {
 				if err := r.wrap("**", "**", n.Summary); err != nil {
 					return err
@@ -166,7 +164,7 @@ func (r *markdownRenderer) block(node any) error {
 		}
 		r.out.WriteString("\n</details>\n")
 	default:
-		return r.unsupported(fmt.Sprintf("%T", node), "unsupported block node")
+		return r.fallback(node, true)
 	}
 	return nil
 }
@@ -191,7 +189,7 @@ func (r *markdownRenderer) list(list List) error {
 				prefix += "[ ] "
 			}
 		}
-		nested := markdownRenderer{cfg: r.cfg}
+		nested := markdownRenderer{htmlLess: r.htmlLess}
 		if err := nested.blocks(item.Children); err != nil {
 			return err
 		}
@@ -221,7 +219,7 @@ func (r *markdownRenderer) slides(children []slideshowContent, caption *Caption)
 func (r *markdownRenderer) table(table Table) error {
 	for _, row := range table.Rows {
 		for _, cell := range row.Cells {
-			if !r.cfg.htmlLess && (cell.Colspan != nil && *cell.Colspan > 1 || cell.Rowspan != nil && *cell.Rowspan > 1) {
+			if !r.htmlLess && (cell.Colspan != nil && *cell.Colspan > 1 || cell.Rowspan != nil && *cell.Rowspan > 1) {
 				return r.htmlBlock(table)
 			}
 		}
@@ -342,7 +340,7 @@ func (r *markdownRenderer) richNode(node any) error {
 		r.out.WriteString(escapeURL(string(n.Href)))
 		r.out.WriteByte(')')
 	case AnchorLink:
-		if r.cfg.htmlLess {
+		if r.htmlLess {
 			return r.rich(n.Children)
 		}
 		r.out.WriteByte('[')
@@ -353,7 +351,7 @@ func (r *markdownRenderer) richNode(node any) error {
 		r.out.WriteString(escapeURL(string(n.AnchorName)))
 		r.out.WriteByte(')')
 	case Reference:
-		if r.cfg.htmlLess {
+		if r.htmlLess {
 			return r.rich(n.Children)
 		}
 		r.out.WriteString("<span id=\"")
@@ -364,7 +362,7 @@ func (r *markdownRenderer) richNode(node any) error {
 		}
 		r.out.WriteString("</span>")
 	case ReferenceLink:
-		if r.cfg.htmlLess {
+		if r.htmlLess {
 			return r.rich(n.Children)
 		}
 		r.out.WriteByte('[')
@@ -393,7 +391,7 @@ func (r *markdownRenderer) richNode(node any) error {
 	case DateTime:
 		location, err := time.LoadLocation(string(n.Timezone))
 		if err != nil {
-			return r.unsupported("datetime", "unknown timezone")
+			return r.fallback(n, false)
 		}
 		r.out.WriteString(escapeMarkdownText(time.Unix(n.Unix, 0).In(location).Format("2006-01-02 15:04:05 MST")))
 	case Code:
@@ -409,13 +407,13 @@ func (r *markdownRenderer) richNode(node any) error {
 		r.out.WriteString(escapeURL(string(n.Src)))
 		r.out.WriteByte(')')
 	default:
-		return r.unsupported(fmt.Sprintf("%T", node), "unsupported rich text node")
+		return r.fallback(node, false)
 	}
 	return nil
 }
 
 func (r *markdownRenderer) wrap(open, close string, children RichText) error {
-	nested := markdownRenderer{cfg: r.cfg}
+	nested := markdownRenderer{htmlLess: r.htmlLess}
 	if err := nested.rich(children); err != nil {
 		return err
 	}
@@ -444,7 +442,7 @@ func (r *markdownRenderer) htmlBlock(node any) error {
 }
 
 func (r *markdownRenderer) htmlWrap(tag string, children RichText) error {
-	if r.cfg.htmlLess {
+	if r.htmlLess {
 		return r.rich(children)
 	}
 	r.out.WriteByte('<')
@@ -460,7 +458,7 @@ func (r *markdownRenderer) htmlWrap(tag string, children RichText) error {
 }
 
 func (r *markdownRenderer) htmlWrapClass(tag, class string, children RichText) error {
-	if r.cfg.htmlLess {
+	if r.htmlLess {
 		return r.rich(children)
 	}
 	r.out.WriteByte('<')
@@ -477,12 +475,15 @@ func (r *markdownRenderer) htmlWrapClass(tag, class string, children RichText) e
 	return nil
 }
 
-func (r *markdownRenderer) unsupported(tag string, reason string) error {
-	if !r.cfg.soft {
-		return unsupportedRenderTag(tag, reason)
+func (r *markdownRenderer) fallback(node any, block bool) error {
+	data, err := Marshal(node)
+	if err != nil {
+		return err
 	}
-	r.out.WriteString(escapeMarkdownText(r.cfg.placeholder))
-	return nil
+	if block {
+		return r.block(NewPreformatted(Text(data)))
+	}
+	return r.richNode(NewCode(Text(data)))
 }
 
 func hasOrderedItems(list List) bool {
@@ -495,12 +496,12 @@ func hasOrderedItems(list List) bool {
 }
 
 func (r *markdownRenderer) tableText(nodes RichText) (string, error) {
-	renderer := markdownRenderer{cfg: r.cfg}
+	renderer := markdownRenderer{htmlLess: r.htmlLess}
 	if err := renderer.rich(nodes); err != nil {
 		return "", err
 	}
 	lineBreak := "<br>"
-	if r.cfg.htmlLess {
+	if r.htmlLess {
 		lineBreak = " "
 	}
 	text := strings.TrimSpace(strings.NewReplacer("  \n", lineBreak, "\n", lineBreak).Replace(renderer.out.String()))
@@ -509,7 +510,7 @@ func (r *markdownRenderer) tableText(nodes RichText) (string, error) {
 
 func (r *markdownRenderer) inlineCode(value string) string {
 	if value == "" {
-		if r.cfg.htmlLess {
+		if r.htmlLess {
 			return ""
 		}
 		return "<code></code>"

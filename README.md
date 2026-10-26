@@ -47,11 +47,12 @@ Footer-style text and link sections are represented as regular blocks.
 
 ## Rendering
 
-`tmark` document content can be rendered directly to HTML or Markdown.
+`tmark` document content can be rendered directly to HTML, Markdown, or terminal text.
 
 ```go
 html, err := tmark.ToHTML(document.Content)
-markdown, err := tmark.ToMarkdown(document.Content)
+markdown, err := tmark.ToMarkdown(document.Content, false)
+terminal, err := tmark.ToTerminal(document.Content, false, false)
 ```
 
 HTML renders unsupported nodes as escaped tmark in inline `<code>` or block
@@ -67,14 +68,14 @@ renderer-specific styling and are not preserved by GFM alone.
 
 Spoiler images and videos use `<figure class="tmark-spoiler" tabindex="0">` in
 HTML and in Markdown with HTML allowed. The example stylesheet blurs the media
-until hover or keyboard focus. With `WithHTMLLess()`, they use ordinary Markdown
+until hover or keyboard focus. With `htmlLess=true`, they use ordinary Markdown
 images or video links without spoiler styling.
 
-HTML is allowed in Markdown output by default. Use `WithHTMLLess()` to emit
+`ToMarkdown(content, htmlLess)` accepts an explicit boolean. Pass `true` to emit
 Markdown without raw HTML tags or comments:
 
 ```go
-markdown, err := tmark.ToMarkdown(document.Content, tmark.WithHTMLLess())
+markdown, err := tmark.ToMarkdown(document.Content, true)
 ```
 
 In this mode, details expand into a bold summary and visible content; HTML-only
@@ -82,16 +83,10 @@ inline styles keep their text. Anchors are omitted, and anchor/reference links
 keep their labels. Table spans are ignored and cell line breaks become spaces.
 Adjacent lists are separated by a thematic break, and empty inline code is
 omitted. Literal HTML in text or code remains escaped text or code content.
-`WithHTMLLess()` can be combined with the conversion options below.
-
-Markdown soft conversion replaces unsupported nodes with placeholders or close
-approximations:
-
-```go
-markdown, err := tmark.ToMarkdown(document.Content, tmark.WithSoftConversion())
-```
-
-`WithPlaceholderText` changes the default Markdown `[unsupported]` placeholder text.
+Unknown or unsupported nodes always render as serialized tmark in inline code
+or code blocks. This also applies to dates with unknown timezones. Rendering only
+returns an error when fallback serialization fails, for example for malformed
+`Unknown.Raw`. Soft mode belongs to the parser only.
 
 ## Generate Example Pages
 
@@ -106,3 +101,8 @@ go run ./example/markdown -html-less
 The generators read `../tmark/examples` and write to `example/html/pages` or
 `example/markdown/pages`, including an index. With `-html-less`, Markdown pages
 go to `example/markdown/pages-htmlless`. Both accept `-input` and `-output`.
+
+## Terminal Export
+
+`ToTerminal(content, plainText, revealSpoilers)` renders ANSI text; the booleans disable styling and reveal spoilers.
+CLI example: `go run ./example/cli ../tmark/examples/all_widgets.tmark` prints to stdout.

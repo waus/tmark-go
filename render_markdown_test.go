@@ -99,7 +99,7 @@ func TestMarkdownGFM(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := ToMarkdown(tc.content)
+			got, err := ToMarkdown(tc.content, false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -110,16 +110,16 @@ func TestMarkdownGFM(t *testing.T) {
 	}
 }
 
-func TestMarkdownSoftPlaceholder(t *testing.T) {
+func TestMarkdownFallback(t *testing.T) {
 	got, err := ToMarkdown(NewRichBlocks(
 		NewParagraph(NewText("before "), Unknown{Raw: []byte("{future;x}")}, NewText(" after")),
 		NewMap(0, 0),
 		NewParagraph(NewText("next")),
-	), WithSoftConversion(), WithPlaceholderText("*unknown*"))
+	), false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "before \\*unknown\\* after\n\n\\*unknown\\*\n\nnext"
+	want := "before `{future;x}` after\n\n```\n{map;#lat{0}#lon{0}}\n```\n\nnext"
 	if string(got) != want {
 		t.Fatalf("ToMarkdown() = %q, want %q", got, want)
 	}
@@ -186,7 +186,7 @@ func TestMarkdownHTMLLess(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := ToMarkdown(tc.content, WithHTMLLess())
+			got, err := ToMarkdown(tc.content, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -197,17 +197,14 @@ func TestMarkdownHTMLLess(t *testing.T) {
 	}
 }
 
-func TestMarkdownHTMLLessPreservesStrictAndSoftConversion(t *testing.T) {
+func TestMarkdownHTMLLessFallback(t *testing.T) {
 	content := NewRichBlocks(NewDetails(NewMap(0, 0)).WithSummary(NewText("Map")))
-	if _, err := ToMarkdown(content, WithHTMLLess()); err == nil {
-		t.Fatal("ToMarkdown() accepted unsupported map in strict mode")
-	}
-	got, err := ToMarkdown(content, WithHTMLLess(), WithSoftConversion(), WithPlaceholderText("<unknown>"))
+	got, err := ToMarkdown(content, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "**Map**\n\n\\<unknown\\>"
+	want := "**Map**\n\n```\n{map;#lat{0}#lon{0}}\n```"
 	if string(got) != want {
-		t.Fatalf("ToMarkdown() = %q, want %q", got, want)
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }

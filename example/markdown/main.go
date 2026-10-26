@@ -21,18 +21,14 @@ func main() {
 			*output += "-htmlless"
 		}
 	}
-	options := []tmark.RenderOption{tmark.WithSoftConversion()}
-	if *htmlLess {
-		options = append(options, tmark.WithHTMLLess())
-	}
-	if err := generate(*input, *output, options); err != nil {
+	if err := generate(*input, *output, *htmlLess); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	fmt.Println(filepath.Join(*output, "index.md"))
 }
 
-func generate(input, output string, options []tmark.RenderOption) error {
+func generate(input, output string, htmlLess bool) error {
 	entries, err := os.ReadDir(input)
 	if err != nil {
 		return err
@@ -55,7 +51,7 @@ func generate(input, output string, options []tmark.RenderOption) error {
 		}
 		file := strings.TrimSuffix(entry.Name(), ".tmark") + ".md"
 		content := append(tmark.NewRichBlocks(tmark.NewHeader(1, document.Title)), document.Content...)
-		if err := writePage(filepath.Join(output, file), content, options); err != nil {
+		if err := writePage(filepath.Join(output, file), content, htmlLess); err != nil {
 			return fmt.Errorf("%s: %w", entry.Name(), err)
 		}
 		index.Items = append(index.Items, tmark.NewListItem(tmark.NewParagraph(tmark.NewLink(tmark.Text(file), document.Title))))
@@ -63,11 +59,11 @@ func generate(input, output string, options []tmark.RenderOption) error {
 	if len(index.Items) == 0 {
 		return fmt.Errorf("no .tmark examples in %s", input)
 	}
-	return writePage(filepath.Join(output, "index.md"), tmark.NewRichBlocks(tmark.NewHeader(1, tmark.NewText("Tmark examples")), index), options)
+	return writePage(filepath.Join(output, "index.md"), tmark.NewRichBlocks(tmark.NewHeader(1, tmark.NewText("Tmark examples")), index), htmlLess)
 }
 
-func writePage(path string, content tmark.RichBlocks, options []tmark.RenderOption) error {
-	body, err := tmark.ToMarkdown(content, options...)
+func writePage(path string, content tmark.RichBlocks, htmlLess bool) error {
+	body, err := tmark.ToMarkdown(content, htmlLess)
 	if err != nil {
 		return err
 	}
