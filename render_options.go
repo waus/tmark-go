@@ -8,6 +8,7 @@ type RenderOption func(*renderConfig)
 
 type renderConfig struct {
 	soft        bool
+	htmlLess    bool
 	placeholder string
 }
 
@@ -22,6 +23,13 @@ func newRenderConfig(options []RenderOption) renderConfig {
 func WithSoftConversion() RenderOption {
 	return func(cfg *renderConfig) {
 		cfg.soft = true
+	}
+}
+
+// WithHTMLLess disables raw HTML in Markdown output, using text approximations.
+func WithHTMLLess() RenderOption {
+	return func(cfg *renderConfig) {
+		cfg.htmlLess = true
 	}
 }
 

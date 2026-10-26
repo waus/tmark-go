@@ -6,10 +6,11 @@ import (
 	"html"
 	"strconv"
 	"strings"
+	"time"
 )
 
-func ToHTML(content RichBlocks, options ...RenderOption) ([]byte, error) {
-	renderer := htmlRenderer{cfg: newRenderConfig(options)}
+func ToHTML(content RichBlocks) ([]byte, error) {
+	renderer := htmlRenderer{}
 	if err := renderer.blocks(content); err != nil {
 		return nil, err
 	}
@@ -17,7 +18,6 @@ func ToHTML(content RichBlocks, options ...RenderOption) ([]byte, error) {
 }
 
 type htmlRenderer struct {
-	cfg renderConfig
 	out bytes.Buffer
 }
 
@@ -88,33 +88,16 @@ func (r *htmlRenderer) block(node any) error {
 		r.out.WriteByte('>')
 		r.out.WriteString(html.EscapeString(string(n.Text)))
 		r.out.WriteString("</code></pre>\n")
-	case MathBlock:
-		r.out.WriteString("<div class=\"math\">")
-		r.out.WriteString(html.EscapeString(string(n.Expression)))
-		r.out.WriteString("</div>\n")
 	case Anchor:
 		r.out.WriteString("<a id=\"")
 		r.out.WriteString(attr(string(n.Name)))
 		r.out.WriteString("\"></a>\n")
-	case Map:
-		r.out.WriteString("<figure class=\"map\" data-lat=\"")
-		r.out.WriteString(strconv.FormatFloat(n.Lat, 'f', -1, 64))
-		r.out.WriteString("\" data-lon=\"")
-		r.out.WriteString(strconv.FormatFloat(n.Lon, 'f', -1, 64))
-		r.out.WriteByte('"')
-		if n.Zoom != nil {
-			r.out.WriteString(" data-zoom=\"")
-			r.out.WriteString(strconv.Itoa(*n.Zoom))
-			r.out.WriteByte('"')
-		}
-		r.out.WriteString("></figure>\n")
-		return r.caption(n.Caption)
 	case Image:
-		return r.mediaFigure("img", string(n.Src), "", false, n.Caption)
+		return r.mediaFigure("img", string(n.Src), "", false, n.HasSpoiler, n.Caption)
 	case Video:
-		return r.mediaFigure("video", string(n.Src), string(n.Preview), n.Loop, n.Caption)
+		return r.mediaFigure("video", string(n.Src), string(n.Preview), n.Loop, n.HasSpoiler, n.Caption)
 	case Audio:
-		return r.mediaFigure("audio", string(n.Src), "", false, n.Caption)
+		return r.mediaFigure("audio", string(n.Src), "", false, false, n.Caption)
 	case Collage:
 		return r.slides("collage", n.Children, n.Caption)
 	case Slideshow:
@@ -136,7 +119,7 @@ func (r *htmlRenderer) block(node any) error {
 		}
 		r.out.WriteString("</details>\n")
 	default:
-		return r.unsupported(fmt.Sprintf("%T", node), "unsupported block node")
+		return r.fallback(node, true)
 	}
 	return nil
 }
@@ -155,7 +138,14 @@ func (r *htmlRenderer) list(list List) error {
 	}
 	fmt.Fprintf(&r.out, "<%s>\n", tag)
 	for _, item := range list.Items {
-		r.out.WriteString("<li>")
+		r.out.WriteString("<li")
+		if item.Order != nil {
+			fmt.Fprintf(&r.out, " value=\"%d\"", *item.Order)
+		}
+		if item.Type != nil && strings.Contains("aAiI1", string(*item.Type)) && len(*item.Type) == 1 {
+			fmt.Fprintf(&r.out, " type=\"%s\"", *item.Type)
+		}
+		r.out.WriteByte('>')
 		if item.Checked != nil {
 			r.out.WriteString("<input type=\"checkbox\" disabled")
 			if *item.Checked {
@@ -173,8 +163,12 @@ func (r *htmlRenderer) list(list List) error {
 	return nil
 }
 
-func (r *htmlRenderer) mediaFigure(tag, src, preview string, loop bool, caption *Caption) error {
-	r.out.WriteString("<figure>")
+func (r *htmlRenderer) mediaFigure(tag, src, preview string, loop, spoiler bool, caption *Caption) error {
+	r.out.WriteString("<figure")
+	if spoiler {
+		r.out.WriteString(" class=\"tmark-spoiler\" tabindex=\"0\"")
+	}
+	r.out.WriteByte('>')
 	switch tag {
 	case "img":
 		r.out.WriteString("<img src=\"")
@@ -209,17 +203,8 @@ func (r *htmlRenderer) slides(class string, children []slideshowContent, caption
 	r.out.WriteString(class)
 	r.out.WriteString("\">\n")
 	for _, child := range children {
-		switch n := child.(type) {
-		case Image:
-			if err := r.mediaFigure("img", string(n.Src), "", false, n.Caption); err != nil {
-				return err
-			}
-		case Video:
-			if err := r.mediaFigure("video", string(n.Src), string(n.Preview), n.Loop, n.Caption); err != nil {
-				return err
-			}
-		default:
-			return r.unsupported(fmt.Sprintf("%T", child), "unsupported slideshow node")
+		if err := r.block(child); err != nil {
+			return err
 		}
 	}
 	if err := r.captionInner(caption); err != nil {
@@ -230,7 +215,18 @@ func (r *htmlRenderer) slides(class string, children []slideshowContent, caption
 }
 
 func (r *htmlRenderer) table(table Table) error {
-	r.out.WriteString("<table>\n")
+	r.out.WriteString("<table")
+	var classes []string
+	if table.Bordered {
+		classes = append(classes, "tmark-bordered")
+	}
+	if table.Striped {
+		classes = append(classes, "tmark-striped")
+	}
+	if len(classes) > 0 {
+		fmt.Fprintf(&r.out, " class=\"%s\"", strings.Join(classes, " "))
+	}
+	r.out.WriteString(">\n")
 	if len(table.Caption) > 0 {
 		r.out.WriteString("<caption>")
 		if err := r.rich(table.Caption); err != nil {
@@ -276,25 +272,6 @@ func (r *htmlRenderer) table(table Table) error {
 	return nil
 }
 
-func (r *htmlRenderer) caption(caption *Caption) error {
-	if caption == nil {
-		return nil
-	}
-	r.out.WriteString("<figcaption>")
-	if err := r.rich(caption.Text); err != nil {
-		return err
-	}
-	if len(caption.Credit) > 0 {
-		r.out.WriteString("<cite>")
-		if err := r.rich(caption.Credit); err != nil {
-			return err
-		}
-		r.out.WriteString("</cite>")
-	}
-	r.out.WriteString("</figcaption>\n")
-	return nil
-}
-
 func (r *htmlRenderer) captionInner(caption *Caption) error {
 	if caption == nil {
 		return nil
@@ -304,7 +281,10 @@ func (r *htmlRenderer) captionInner(caption *Caption) error {
 		return err
 	}
 	if len(caption.Credit) > 0 {
-		r.out.WriteString(" <cite>")
+		if len(caption.Text) > 0 {
+			r.out.WriteString("<br>\n")
+		}
+		r.out.WriteString("<cite>")
 		if err := r.rich(caption.Credit); err != nil {
 			return err
 		}
@@ -382,21 +362,21 @@ func (r *htmlRenderer) richNode(node any) error {
 	case Superscript:
 		return r.wrap("sup", n.Children)
 	case DateTime:
+		location, err := time.LoadLocation(string(n.Timezone))
+		if err != nil {
+			return r.fallback(n, false)
+		}
 		r.out.WriteString("<time data-unix=\"")
 		r.out.WriteString(strconv.FormatInt(n.Unix, 10))
 		r.out.WriteString("\" data-timezone=\"")
 		r.out.WriteString(attr(string(n.Timezone)))
 		r.out.WriteString("\">")
-		r.out.WriteString(strconv.FormatInt(n.Unix, 10))
+		r.out.WriteString(html.EscapeString(time.Unix(n.Unix, 0).In(location).Format("2006-01-02 15:04:05 MST")))
 		r.out.WriteString("</time>")
 	case Code:
 		r.out.WriteString("<code>")
 		r.out.WriteString(html.EscapeString(string(n.Text)))
 		r.out.WriteString("</code>")
-	case Math:
-		r.out.WriteString("<span class=\"math\">")
-		r.out.WriteString(html.EscapeString(string(n.Expression)))
-		r.out.WriteString("</span>")
 	case Icon:
 		r.out.WriteString("<img src=\"")
 		r.out.WriteString(attr(string(n.Src)))
@@ -404,9 +384,9 @@ func (r *htmlRenderer) richNode(node any) error {
 		if n.AlternativeText != nil {
 			r.out.WriteString(attr(string(*n.AlternativeText)))
 		}
-		r.out.WriteString("\">")
+		r.out.WriteString("\" style=\"height: 1em; width: auto; vertical-align: middle;\">")
 	default:
-		return r.unsupported(fmt.Sprintf("%T", node), "unsupported rich text node")
+		return r.fallback(node, false)
 	}
 	return nil
 }
@@ -439,11 +419,20 @@ func (r *htmlRenderer) wrapClass(tag, class string, children RichText) error {
 	return nil
 }
 
-func (r *htmlRenderer) unsupported(tag string, reason string) error {
-	if !r.cfg.soft {
-		return unsupportedRenderTag(tag, reason)
+func (r *htmlRenderer) fallback(node any, block bool) error {
+	data, err := Marshal(node)
+	if err != nil {
+		return err
 	}
-	r.out.WriteString(html.EscapeString(r.cfg.placeholder))
+	if block {
+		r.out.WriteString("<pre>")
+	}
+	r.out.WriteString("<code>")
+	r.out.WriteString(html.EscapeString(string(data)))
+	r.out.WriteString("</code>")
+	if block {
+		r.out.WriteString("</pre>\n")
+	}
 	return nil
 }
 
