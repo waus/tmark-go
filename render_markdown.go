@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // ToMarkdown renders GFM; htmlLess disables raw HTML tags and comments.
@@ -389,11 +388,11 @@ func (r *markdownRenderer) richNode(node any) error {
 	case Superscript:
 		return r.htmlWrap("sup", n.Children)
 	case DateTime:
-		location, err := time.LoadLocation(string(n.Timezone))
+		formatted, err := formatDateTime(n)
 		if err != nil {
 			return r.fallback(n, false)
 		}
-		r.out.WriteString(escapeMarkdownText(time.Unix(n.Unix, 0).In(location).Format("2006-01-02 15:04:05 MST")))
+		r.out.WriteString(escapeMarkdownText(formatted))
 	case Code:
 		r.out.WriteString(r.inlineCode(string(n.Text)))
 	case Math:

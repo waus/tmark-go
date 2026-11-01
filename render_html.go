@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"html"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -362,7 +363,7 @@ func (r *htmlRenderer) richNode(node any) error {
 	case Superscript:
 		return r.wrap("sup", n.Children)
 	case DateTime:
-		location, err := time.LoadLocation(string(n.Timezone))
+		formatted, err := formatDateTime(n)
 		if err != nil {
 			return r.fallback(n, false)
 		}
@@ -371,7 +372,7 @@ func (r *htmlRenderer) richNode(node any) error {
 		r.out.WriteString("\" data-timezone=\"")
 		r.out.WriteString(attr(string(n.Timezone)))
 		r.out.WriteString("\">")
-		r.out.WriteString(html.EscapeString(time.Unix(n.Unix, 0).In(location).Format("2006-01-02 15:04:05 MST")))
+		r.out.WriteString(html.EscapeString(formatted))
 		r.out.WriteString("</time>")
 	case Code:
 		r.out.WriteString("<code>")
@@ -438,4 +439,49 @@ func (r *htmlRenderer) fallback(node any, block bool) error {
 
 func attr(value string) string {
 	return html.EscapeString(value)
+}
+
+var utcOffsetPattern = regexp.MustCompile(`^(?:([+-])([0-9]{2}):([0-9]{2})|UTC([+-])([0-9]{1,2})(?::([0-9]{2}))?)$`)
+
+func formatDateTime(node DateTime) (string, error) {
+	name := string(node.Timezone)
+	var location *time.Location
+	parts := utcOffsetPattern.FindStringSubmatch(name)
+	switch {
+	case name == "" || name == "UTC" || name == "GMT" || name == "Z":
+		location = time.UTC
+	case parts != nil:
+		if parts[1] == "" {
+			parts = parts[3:]
+		}
+		hours, _ := strconv.Atoi(parts[2])
+		minutes, _ := strconv.Atoi(parts[3])
+		if hours > 23 || minutes > 59 {
+			return "", fmt.Errorf("tmark: invalid UTC offset %q", name)
+		}
+		seconds := (hours*60 + minutes) * 60
+		label := "UTC"
+		if seconds != 0 {
+			label = fmt.Sprintf("UTC%s%02d:%02d", parts[1], hours, minutes)
+		}
+		if parts[1] == "-" {
+			seconds = -seconds
+		}
+		location = time.FixedZone(label, seconds)
+	default:
+		upper := strings.ToUpper(name)
+		if strings.EqualFold(name, "UTC") || strings.EqualFold(name, "GMT") || strings.EqualFold(name, "Z") ||
+			name == "Local" || name == "localtime" || name == "posixrules" ||
+			strings.HasPrefix(name, "posix/") || strings.HasPrefix(name, "right/") ||
+			strings.HasPrefix(upper, "GMT+") || strings.HasPrefix(upper, "GMT-") ||
+			strings.HasPrefix(upper, "UTC+") || strings.HasPrefix(upper, "UTC-") {
+			return "", fmt.Errorf("tmark: unsupported time zone %q", name)
+		}
+		var err error
+		location, err = time.LoadLocation(name)
+		if err != nil {
+			return "", err
+		}
+	}
+	return time.Unix(node.Unix, 0).In(location).Format("2006-01-02 15:04:05 MST"), nil
 }

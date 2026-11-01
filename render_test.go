@@ -243,3 +243,86 @@ func TestRenderFallback(t *testing.T) {
 		})
 	}
 }
+
+func TestDateTimeRejectsSystemTimezones(t *testing.T) {
+	t.Setenv("TZ", "Europe/Moscow")
+	for _, zone := range []Text{"Local", "localtime", "posixrules", "posix/Europe/Moscow", "right/UTC", "Unknown/Zone", "PST", "CST", "IST", "MSK", "GMT+2", "GMT+02:00", "gmt+2", "gmt", "utc", "utc+2", "z", "+2:00", "+0200", "+24:00", "-24:00", "+03:60", "UTC+24", "UTC+2:3", "UTC+002", "UTC+", "UTC+2:000", "UTC+２", "UTC+2 ", " UTC+2"} {
+		t.Run(string(zone), func(t *testing.T) {
+			node := NewDateTime(0, zone)
+			raw, err := Marshal(node)
+			if err != nil {
+				t.Fatal(err)
+			}
+			content := NewRichBlocks(NewParagraph(node))
+			got, err := ToHTML(content)
+			if err != nil || string(got) != "<p><code>"+string(raw)+"</code></p>\n" {
+				t.Fatalf("HTML = %q, %v", got, err)
+			}
+			for _, htmlLess := range []bool{false, true} {
+				got, err := ToMarkdown(content, htmlLess)
+				if err != nil || string(got) != "`"+string(raw)+"`" {
+					t.Fatalf("Markdown = %q, %v", got, err)
+				}
+			}
+			for _, plain := range []bool{false, true} {
+				got, err := ToTerminal(content, plain, false)
+				if err != nil || string(got) != "`"+string(raw)+"`" {
+					t.Fatalf("Terminal = %q, %v", got, err)
+				}
+			}
+		})
+	}
+	got, err := ToTerminal(NewRichBlocks(NewParagraph(NewDateTime(0, ""))), true, false)
+	if err != nil || string(got) != "1970-01-01 00:00:00 UTC" {
+		t.Fatalf("empty timezone = %q, %v", got, err)
+	}
+}
+
+func TestDateTimeFixedOffsets(t *testing.T) {
+	for _, tc := range []struct {
+		zone     Text
+		expected string
+	}{
+		{"", "1970-01-01 00:00:00 UTC"},
+		{"UTC", "1970-01-01 00:00:00 UTC"},
+		{"GMT", "1970-01-01 00:00:00 UTC"},
+		{"Z", "1970-01-01 00:00:00 UTC"},
+		{"+03:00", "1970-01-01 03:00:00 UTC+03:00"},
+		{"-05:30", "1969-12-31 18:30:00 UTC-05:30"},
+		{"UTC+2", "1970-01-01 02:00:00 UTC+02:00"},
+		{"UTC+02", "1970-01-01 02:00:00 UTC+02:00"},
+		{"UTC-3:30", "1969-12-31 20:30:00 UTC-03:30"},
+		{"UTC+05:45", "1970-01-01 05:45:00 UTC+05:45"},
+		{"+00:00", "1970-01-01 00:00:00 UTC"},
+		{"-00:00", "1970-01-01 00:00:00 UTC"},
+		{"UTC-0", "1970-01-01 00:00:00 UTC"},
+		{"+23:59", "1970-01-01 23:59:00 UTC+23:59"},
+		{"-23:59", "1969-12-31 00:01:00 UTC-23:59"},
+		{"UTC+23:59", "1970-01-01 23:59:00 UTC+23:59"},
+		{"Etc/GMT+2", "1969-12-31 22:00:00 -02"},
+	} {
+		t.Run(string(tc.zone), func(t *testing.T) {
+			content := NewRichBlocks(NewParagraph(NewDateTime(0, tc.zone)))
+			got, err := ToHTML(content)
+			if err != nil || string(got) != "<p><time data-unix=\"0\" data-timezone=\""+string(tc.zone)+"\">"+tc.expected+"</time></p>\n" {
+				t.Fatalf("HTML = %q, %v", got, err)
+			}
+			for _, htmlLess := range []bool{false, true} {
+				got, err := ToMarkdown(content, htmlLess)
+				if err != nil || string(got) != strings.NewReplacer("-", "\\-", "+", "\\+").Replace(tc.expected) {
+					t.Fatalf("Markdown = %q, %v", got, err)
+				}
+			}
+			for _, plain := range []bool{false, true} {
+				got, err := ToTerminal(content, plain, false)
+				if err != nil || string(got) != tc.expected {
+					t.Fatalf("Terminal = %q, %v", got, err)
+				}
+			}
+		})
+	}
+	got, err := formatDateTime(NewDateTime(1625097600, "UTC+2"))
+	if err != nil || got != "2021-07-01 02:00:00 UTC+02:00" {
+		t.Fatalf("summer fixed offset = %q, %v", got, err)
+	}
+}

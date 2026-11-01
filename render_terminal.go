@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 	"unicode"
 )
 
@@ -379,11 +378,11 @@ func (r *terminalRenderer) richNode(node any) error {
 		}
 		r.out.WriteByte(']')
 	case DateTime:
-		location, err := time.LoadLocation(string(n.Timezone))
+		formatted, err := formatDateTime(n)
 		if err != nil {
 			return r.fallback(n, false)
 		}
-		r.text(time.Unix(n.Unix, 0).In(location).Format("2006-01-02 15:04:05 MST"))
+		r.text(formatted)
 	default:
 		return r.fallback(node, false)
 	}
